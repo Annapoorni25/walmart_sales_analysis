@@ -185,3 +185,86 @@ WHERE lys.lyRevenue > cys.cyRevenue
 ORDER BY rev_dec_ratio DESC
 
 
+--10)Identify the top 5 product categories by revenue.
+
+SELECT TOP(5) 
+    category,
+    SUM(total_price) AS revenue
+FROM walmart
+GROUP BY category
+ORDER BY revenue DESC
+
+--11)Calculate month-over-month revenue growth for each branch.
+
+WITH MonthlyRevenue AS
+(
+SELECT
+    Branch,
+    YEAR(TRY_CONVERT(date, [date] , 3)) AS sales_year,
+    MONTH(TRY_CONVERT(date, [date] , 3)) AS sales_month,
+    SUM(total_price) AS monthly_revenue
+FROM walmart
+GROUP BY 
+    Branch,
+    YEAR(TRY_CONVERT(date, [date] , 3)) ,
+    MONTH(TRY_CONVERT(date, [date] , 3))
+),
+RevenueComparison AS
+(
+    SELECT
+        Branch,
+        sales_year,
+        sales_month,
+        monthly_revenue,
+        LAG(monthly_revenue) OVER(
+            PARTITION BY Branch
+            ORDER BY sales_year , sales_month
+        ) AS previous_month_revenue
+    FROM MonthlyRevenue
+)
+SELECT
+    Branch,
+    sales_year,
+    sales_month,
+    monthly_revenue,
+    previous_month_revenue,
+    monthly_revenue - previous_month_revenue AS revenue_change,
+    ROUND(
+        (monthly_revenue - previous_month_revenue)
+        * 100.0 / NULLIF(previous_month_revenue, 0),
+        2
+    ) AS growth_percentage
+FROM RevenueComparison
+ORDER BY Branch, sales_year , sales_month;
+
+--12)Identify the top 3 categories by revenue within each branch.
+
+WITH CategoryRevenue AS
+(
+    SELECT
+        Branch,
+        category,
+        SUM(total_price) AS revenue
+    FROM walmart
+    GROUP BY
+        Branch,
+        category
+),
+RankedCategories AS
+(
+    SELECT
+        Branch,
+        category,
+        revenue,
+        RANK() OVER(
+            PARTITION BY Branch
+            ORDER BY revenue DESC
+        ) AS category_rank
+    FROM CategoryRevenue
+)
+SELECT
+    Branch,
+    category,
+    revenue
+FROM RankedCategories
+WHERE category_rank IN (1,2,3)
